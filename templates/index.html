@@ -33,6 +33,17 @@
         #device-selection, #upload-section {
             margin-bottom: 20px;
         }
+
+        .loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(255, 255, 255, 0.8);
+            padding: 20px;
+            border-radius: 5px;
+            display: none;
+        }
     </style>
 </head>
 <body>
@@ -54,24 +65,32 @@
         <div id="upload-section">
             <h3>Upload GeoTIFF File</h3>
             <form id="geotiff-form" enctype="multipart/form-data">
-                <input type="file" name="geotiff" id="geotiff">
+                <input type="file" name="geotiff" id="geotiff" accept=".tif,.tiff">
                 <button type="submit">Upload</button>
             </form>
         </div>
 
         <!-- Map -->
-        <div id="map"></div>
+        <div id="map">
+            <div class="loading">Loading GeoTIFF...</div>
+        </div>
 
         <button id="export-geojson">Export GeoJSON</button>
     </div>
 
+    <!-- Required libraries -->
     <script src="{{ url_for('static', filename='leaflet/leaflet.js') }}"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/geotiff.js/1.0.1/geotiff.js"></script>
+    <script src="https://unpkg.com/georaster"></script>
+    <script src="https://unpkg.com/georaster-layer-for-leaflet"></script>
+
     <script>
         // Initialize Leaflet map, centered on UC San Diego coordinates
-        var map = L.map('map').setView([32.8801, -117.2340], 15);  // UCSD coordinates
+        var map = L.map('map').setView([32.8801, -117.2340], 15);
+        var currentGeoTiffLayer = null;
 
         // Load OpenStreetMap tiles as a base layer
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        var baseLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             maxZoom: 19,
             attribution: '© OpenStreetMap contributors'
         }).addTo(map);
@@ -82,7 +101,7 @@
                 .then(response => response.json())
                 .then(data => {
                     const deviceSelect = document.getElementById('device');
-                    deviceSelect.innerHTML = '';  // Clear existing options
+                    deviceSelect.innerHTML = '<option value="">Select a device...</option>';
                     data.forEach(device => {
                         const option = document.createElement('option');
                         option.value = device.port;
@@ -102,22 +121,42 @@
         // Device form submission
         document.getElementById('device-form').addEventListener('submit', function (e) {
             e.preventDefault();
-            var device = document.getElementById('device').value;
+            
+            const deviceSelect = document.getElementById('device');
+            const selectedDevice = deviceSelect.value;
+            
+            if (!selectedDevice) {
+                alert('Please select a device');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('device', selectedDevice);
+
             fetch('/device', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({device: device})
+                body: formData
             })
             .then(response => response.json())
-            .then(data => alert('Device selected: ' + (data.device || data.message || data.error)));
+            .then(data => {
+                if (data.error) {
+                    alert('Error: ' + data.error);
+                } else {
+                    alert('Successfully connected to: ' + data.message);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Failed to connect to device');
+            });
         });
 
-        // GeoTIFF upload form
+        // GeoTIFF upload and display
         document.getElementById('geotiff-form').addEventListener('submit', function (e) {
             e.preventDefault();
-            var formData = new FormData(this);
+            const formData = new FormData(this);
+            document.querySelector('.loading').style.display = 'block';
+
             fetch('/upload_geotiff', {
                 method: 'POST',
                 body: formData
@@ -126,9 +165,43 @@
             .then(data => {
                 if (data.error) {
                     alert(data.error);
+                    document.querySelector('.loading').style.display = 'none';
                 } else {
-                    alert('GeoTIFF uploaded successfully!');
-                    // Further implementation to load GeoTIFF as a base layer
+                    // Load and display the GeoTIFF
+                    fetch(data.file_path)
+                        .then(response => response.arrayBuffer())
+                        .then(arrayBuffer => {
+                            parseGeoraster(arrayBuffer).then(georaster => {
+                                // Remove existing GeoTIFF layer if it exists
+                                if (currentGeoTiffLayer) {
+                                    map.removeLayer(currentGeoTiffLayer);
+                                }
+
+                                // Create and add the new GeoTIFF layer
+                                currentGeoTiffLayer = new GeoRasterLayer({
+                                    georaster: georaster,
+                                    opacity: 0.7,
+                                    resolution: 256
+                                });
+                                
+                                currentGeoTiffLayer.addTo(map);
+
+                                // Fit map to GeoTIFF bounds
+                                const bounds = [
+                                    [georaster.bounds.south, georaster.bounds.west],
+                                    [georaster.bounds.north, georaster.bounds.east]
+                                ];
+                                map.fitBounds(bounds);
+
+                                document.querySelector('.loading').style.display = 'none';
+                                alert('GeoTIFF loaded successfully!');
+                            });
+                        })
+                        .catch(error => {
+                            console.error('Error loading GeoTIFF:', error);
+                            alert('Failed to load GeoTIFF file');
+                            document.querySelector('.loading').style.display = 'none';
+                        });
                 }
             });
         });
@@ -142,7 +215,7 @@
                         "type": "Feature",
                         "geometry": {
                             "type": "Point",
-                            "coordinates": [32.8801, -117.2340]  // Example point at UCSD
+                            "coordinates": [32.8801, -117.2340]
                         }
                     }
                 ]
