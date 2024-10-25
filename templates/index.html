@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GIS Features</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='leaflet/leaflet.css') }}">
+    <style>
+        body, html {
+            height: 100%;
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: Arial, sans-serif;
+            background-color: #f0f0f0;
+        }
+
+        .container {
+            width: 1000px;
+            padding: 20px;
+            background-color: #4CAF50;
+            border-radius: 15px;
+            position: relative;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        }
+
+        #map {
+            width: 100%;
+            height: 400px;
+        }
+
+        #device-selection, #upload-section {
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>GIS Features</h1>
+
+        <!-- Device selection -->
+        <div id="device-selection">
+            <h3>Select Communication Device</h3>
+            <form id="device-form">
+                <select name="device" id="device">
+                    <option value="">Loading devices...</option>
+                </select>
+                <button type="submit">Submit</button>
+            </form>
+        </div>
+
+        <!-- GeoTIFF upload -->
+        <div id="upload-section">
+            <h3>Upload GeoTIFF File</h3>
+            <form id="geotiff-form" enctype="multipart/form-data">
+                <input type="file" name="geotiff" id="geotiff">
+                <button type="submit">Upload</button>
+            </form>
+        </div>
+
+        <!-- Map -->
+        <div id="map"></div>
+
+        <button id="export-geojson">Export GeoJSON</button>
+    </div>
+
+    <script src="{{ url_for('static', filename='leaflet/leaflet.js') }}"></script>
+    <script>
+        // Initialize Leaflet map, centered on UC San Diego coordinates
+        var map = L.map('map').setView([32.8801, -117.2340], 15);  // UCSD coordinates
+
+        // Load OpenStreetMap tiles as a base layer
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(map);
+
+        // Fetch available devices and populate the dropdown
+        function loadDevices() {
+            fetch('/list_devices')
+                .then(response => response.json())
+                .then(data => {
+                    const deviceSelect = document.getElementById('device');
+                    deviceSelect.innerHTML = '';  // Clear existing options
+                    data.forEach(device => {
+                        const option = document.createElement('option');
+                        option.value = device.port;
+                        option.textContent = `${device.port} - ${device.description}`;
+                        deviceSelect.appendChild(option);
+                    });
+                })
+                .catch(error => {
+                    console.error('Error loading devices:', error);
+                    alert('Failed to load devices.');
+                });
+        }
+
+        // Load devices on page load
+        window.onload = loadDevices;
+
+        // Device form submission
+        document.getElementById('device-form').addEventListener('submit', function (e) {
+            e.preventDefault();
+            var device = document.getElementById('device').value;
+            fetch('/device', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({device: device})
+            })
+            .then(response => response.json())
+            .then(data => alert('Device selected: ' + (data.device || data.message || data.error)));
+        });
+
+        // GeoTIFF upload form
+        document.getElementById('geotiff-form').addEventListener('submit', function (e) {
+            e.preventDefault();
+            var formData = new FormData(this);
+            fetch('/upload_geotiff', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    alert(data.error);
+                } else {
+                    alert('GeoTIFF uploaded successfully!');
+                    // Further implementation to load GeoTIFF as a base layer
+                }
+            });
+        });
+
+        // Export GeoJSON data
+        document.getElementById('export-geojson').addEventListener('click', function () {
+            var geojsonData = {
+                "type": "FeatureCollection",
+                "features": [
+                    {
+                        "type": "Feature",
+                        "geometry": {
+                            "type": "Point",
+                            "coordinates": [32.8801, -117.2340]  // Example point at UCSD
+                        }
+                    }
+                ]
+            };
+
+            fetch('/export_geojson', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({geojson: JSON.stringify(geojsonData)})
+            })
+            .then(response => response.json())
+            .then(data => alert(data.message));
+        });
+    </script>
+</body>
+</html>
