@@ -8,7 +8,7 @@ var baseLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
     attribution: '© OpenStreetMap contributors'
 }).addTo(map);
 
-// Fetch available devices and populate the dropdown
+// Fetch available devices and populate the dropdown.
 function loadDevices() {
     fetch('/list_devices')
         .then(response => response.json())
