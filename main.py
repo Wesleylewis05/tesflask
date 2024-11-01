@@ -9,7 +9,7 @@ app = Flask(__name__)
 UPLOAD_FOLDER = 'static/uploads'
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
-# Allowed extensions for device communication
+# Allowed extensions for device communication.
 ALLOWED_EXTENSIONS = {'txt', 'log','tif','tiff'}
 
 def allowed_file(filename):
